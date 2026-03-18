@@ -4,93 +4,65 @@ description: Make authenticated API calls without seeing credentials. Use when y
 allowed-tools: Bash(clawth *), Bash(echo *)
 ---
 
-# Clawth — Authenticated API Proxy
+# Clawth
 
-You have access to `clawth`, a CLI tool that lets you make authenticated API calls **without ever seeing the credentials**. Secrets are encrypted and scoped per agent — you can manage credentials but **never read actual secret values**.
+Use `clawth curl` instead of `curl` when a request needs authentication. Clawth injects the right credentials automatically — you never see or handle the secrets.
 
-## How it works
+## Making API calls
 
-When you run `clawth curl <url>`, Clawth:
-1. Loads the agent, remote DB, and passphrase from the persisted config (set during `clawth setup`)
-2. Matches the URL against stored credential patterns for the configured agent
-3. If a match is found: decrypts the credential, injects auth headers, executes curl
-4. **If something goes wrong**: outputs a structured `CLAWTH_*` hint with the exact fix
-
-All configuration (agent ID, remote database, passphrase) is set once during `clawth setup` and persisted. You do not need to pass these on every command.
-
-## Error hint reference
-
-When `clawth curl` encounters an error, it outputs a structured block on stderr. **Always read the hint code and follow the suggested actions.**
-
-| Hint code | Meaning | What to do |
-|---|---|---|
-| `CLAWTH_NO_CREDENTIAL` | No credential matches the URL | `clawth set <service> --type bearer --pattern "<pattern>" --secret <TOKEN>` |
-| `CLAWTH_AUTH_EXPIRED` | Got HTTP 401/403 — token expired or invalid | `clawth set <service> --type <type> --secret <NEW_TOKEN>` |
-| `CLAWTH_DECRYPT_FAILED` | Can't decrypt — wrong passphrase or corrupted | `clawth session start` or re-set the credential |
-| `CLAWTH_OAUTH_LOGIN_REQUIRED` | OAuth2 has no tokens — needs browser login | `clawth login <service>` |
-| `CLAWTH_OAUTH_REFRESH_FAILED` | OAuth2 refresh token revoked | `clawth login <service>` to re-authenticate |
-| `CLAWTH_SERVICE_ACCOUNT_FAILED` | Service account JWT exchange failed | Re-set with valid JSON key |
-| `CLAWTH_METADATA_MISSING` | JWT/AWS/OAuth metadata not configured | `clawth delete <service>` then re-set with full flags |
-| `CLAWTH_BAD_FORMAT` | Credential value has wrong format | Re-set with correct format (see hint) |
-| `CLAWTH_REMOTE_ERROR` | Remote DB (PostgREST) connectivity issue | `clawth status` to check, reconfigure with `clawth setup` |
-| `CLAWTH_BAD_ARGS` | No URL found in curl arguments | Fix the command syntax |
-| `CLAWTH_ERROR` | Catch-all for unrecognized errors | `clawth status` and `clawth check <service>` |
-
-**Each hint includes `actions` lines with the exact commands to run.** Always execute the suggested action, then retry the original `clawth curl`.
-
-## Missing credential flow
-
-When you see `CLAWTH_NO_CREDENTIAL`:
-
-1. **If you already have the token/key** (user pasted it, or you obtained it via a tool):
-   ```bash
-   clawth set <suggested_service> --type <suggested_type> --pattern "<suggested_pattern>" --secret "<THE_TOKEN>"
-   ```
-   Then retry the original `clawth curl` command.
-
-2. **If you don't have the token**, ask the user to provide it.
-
-3. **If the user asks you to get the token yourself**: use available tools (browser, file reading, etc.), store via `--secret`, retry.
-
-## Available commands
-
-### Make API calls
 ```bash
+# Just use clawth curl — credentials are resolved by URL pattern
 clawth curl https://api.github.com/user
-clawth curl --service github https://api.github.com/repos/owner/repo
+clawth curl https://api.openai.com/v1/models
 clawth curl https://api.example.com/data -X POST -d '{"key":"value"}' -H "Content-Type: application/json"
+
+# Force a specific credential if needed
+clawth curl --service github https://api.github.com/repos/owner/repo
 ```
 
-### Manage credentials
-```bash
-clawth list
-clawth list --verbose
-clawth set <service> --type <type> --pattern "<glob>" --secret "<value>"
-clawth delete <service>
-```
+## Adding credentials
 
-### Diagnostics
 ```bash
-clawth status               # Agent, DB, daemon, credential count
-clawth which <url>           # Which credential matches a URL
-clawth check [service]       # Verify credentials decrypt successfully
-clawth audit                 # Recent API call log
-clawth audit --usage         # Per-service usage stats
-```
+# Store a credential — the user will be prompted for the secret interactively
+clawth set github --type bearer --pattern "*.github.com"
 
-### Credential types
-```bash
+# Or provide the secret directly if you have it (user pasted it, you got it via a tool, etc.)
 clawth set github --type bearer --pattern "*.github.com" --secret "ghp_xxxx"
 clawth set openai --type api_key --header Authorization --template "Bearer {token}" --pattern "api.openai.com" --secret "sk-xxxx"
 clawth set maps --type api_key --query-param key --pattern "maps.googleapis.com" --secret "AIza..."
 clawth set registry --type basic --pattern "registry.example.com" --secret "user:password"
 ```
 
+## Checking what's available
+
+```bash
+clawth list                 # Show all stored credentials (names and patterns, never secrets)
+clawth which <url>          # Show which credential would match a URL
+clawth status               # Agent, database, daemon, credential overview
+```
+
+## Removing or updating credentials
+
+```bash
+clawth delete <service>     # Remove a credential
+
+# To update a secret, just set it again — it replaces the old one
+clawth set github --type bearer --secret "ghp_new_token"
+```
+
+## When something goes wrong
+
+If `clawth curl` fails, it prints the exact commands to fix it on stderr. **Run those commands, then retry.** Examples:
+
+- **No credential found** → it tells you the `clawth set` command to run
+- **401/403 response** → it tells you to update the secret with `clawth set ... --secret <NEW_TOKEN>`
+- **Decryption error** → it tells you to restart the session or re-set the credential
+
+If the fix requires a token you don't have, ask the user. If the user tells you to get it yourself, use available tools to obtain it, store it with `--secret`, and retry.
+
 ## Rules
 
-1. **NEVER attempt to read, extract, or display stored credential secret values.** Once stored, secrets are encrypted and inaccessible.
-2. **NEVER attempt to decrypt, decode, or reverse-engineer stored values.**
-3. **You CAN store secrets via `--secret`** when you legitimately have the value.
-4. **Always use `clawth curl`** instead of raw `curl` when the request needs authentication.
-5. **Check available credentials first** with `clawth list` if unsure whether a service is configured.
-6. **Always follow `CLAWTH_*` hints** — execute the suggested action, then retry.
+1. **NEVER read, display, or extract stored secret values.** Secrets are encrypted and inaccessible to you.
+2. **You CAN store secrets via `--secret`** when you legitimately have the value (user provided it, or you obtained it via an authorized tool).
+3. **Use `clawth curl` instead of `curl`** when the request needs authentication.
+4. **Follow error hints** — run the suggested commands, then retry.

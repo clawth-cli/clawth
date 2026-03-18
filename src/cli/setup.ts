@@ -1,6 +1,6 @@
 import { existsSync, unlinkSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -81,24 +81,10 @@ async function guidedSetup(opts: SetupOptions): Promise<void> {
   const agentInput = await promptInput("  Agent ID (Enter for 'default'): ");
   const agent = agentInput || "default";
 
-  // Step 3: Passphrase
-  const passphraseChoice = await promptInput("  Set a passphrase or auto-generate? (Enter to generate): ");
-  let passphrase: string;
-
-  if (passphraseChoice) {
-    const confirm = await promptSecret("  Confirm passphrase: ");
-    if (passphraseChoice !== confirm) {
-      console.error("  Passphrases don't match. Auto-generating instead.");
-      passphrase = generatePassphrase();
-      console.error(`  Passphrase: ${passphrase}`);
-    } else {
-      passphrase = passphraseChoice;
-    }
-  } else {
-    passphrase = generatePassphrase();
-    console.error(`  Passphrase: ${passphrase}`);
-  }
-
+  // Step 3: Passphrase — auto-generated, no question
+  const passphrase = generatePassphrase();
+  console.error(`  Passphrase: ${passphrase}`);
+  console.error(`  ${"\x1b[2m"}(save this if you need to start a new session later)${"\x1b[0m"}`);
   console.error("");
 
   // Apply and save
@@ -153,15 +139,9 @@ async function applySetup(opts: ApplyOptions): Promise<void> {
   if (remoteJwt) cfg.remoteJwt = remoteJwt;
   saveConfig(cfg);
 
-  // Initialize database
-  const path = dbPath();
+  // Initialize database (creates if missing, opens if exists)
   if (!remote) {
-    if (existsSync(path)) {
-      // Existing DB — just open it
-      await initializeDatabase();
-    } else {
-      await initializeDatabase();
-    }
+    await initializeDatabase();
   }
 
   // Register passphrase for this agent
@@ -178,6 +158,9 @@ async function applySetup(opts: ApplyOptions): Promise<void> {
   // Start session daemon
   await spawnSessionDaemon(passphrase);
 
+  // Install globally so `clawth` works directly
+  installGlobally();
+
   // Summary
   console.error("");
   console.error("  Ready!");
@@ -185,9 +168,31 @@ async function applySetup(opts: ApplyOptions): Promise<void> {
   console.error("");
   console.error("  Next steps — add a credential then use it:");
   console.error("");
-  console.error(`    bunx clawth set github --type bearer --pattern "*.github.com"`);
-  console.error(`    bunx clawth curl https://api.github.com/user`);
+  console.error(`    clawth set github --type bearer --pattern "*.github.com"`);
+  console.error(`    clawth curl https://api.github.com/user`);
   console.error("");
+}
+
+function installGlobally(): void {
+  // Check if clawth is already globally available
+  try {
+    execSync("clawth --version", { stdio: "ignore" });
+    return; // Already installed
+  } catch {
+    // Not installed — continue
+  }
+
+  try {
+    // Try npm first (most common)
+    execSync("npm install -g clawth", { stdio: "ignore" });
+  } catch {
+    // npm failed (permissions?) — try with bun
+    try {
+      execSync("bun add -g clawth", { stdio: "ignore" });
+    } catch {
+      // Silent fail — user can still use npx clawth
+    }
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

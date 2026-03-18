@@ -14,6 +14,7 @@ import { checkCommand } from "./check.ts";
 import { auditCommand } from "./audit.ts";
 import { exportCommand, importCommand } from "./import-export.ts";
 import { completionCommand } from "./completion.ts";
+import { credsCommand } from "./creds.ts";
 import { setAgentId } from "../db/repository.ts";
 import { configurePostgREST } from "../db/postgrest.ts";
 import { loadConfig } from "../config/store.ts";
@@ -183,6 +184,14 @@ export function createProgram(): Command {
     .description("Import credentials from an encrypted file")
     .action(async (file) => {
       await importCommand(file);
+    });
+
+  // creds (interactive credential manager)
+  program
+    .command("creds")
+    .description("Interactive credential manager — browse, add, update, remove")
+    .action(async () => {
+      await credsCommand();
     });
 
   // completion
