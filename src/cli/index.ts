@@ -18,6 +18,19 @@ import { credsCommand } from "./creds.ts";
 import { setAgentId } from "../db/repository.ts";
 import { configurePostgREST } from "../db/postgrest.ts";
 import { loadConfig } from "../config/store.ts";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+function getVersion(): string {
+  try {
+    const thisDir = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(thisDir, "..", "..", "package.json"), "utf8"));
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
 
 function applyConfig(): void {
   const cfg = loadConfig();
@@ -35,7 +48,7 @@ export function createProgram(): Command {
     .description(
       "CLI tool that lets Claude Code make authenticated API calls without ever seeing credentials",
     )
-    .version("0.1.0")
+    .version(getVersion())
     .hook("preAction", () => {
       applyConfig();
     });

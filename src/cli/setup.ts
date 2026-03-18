@@ -1,18 +1,39 @@
-import { existsSync, unlinkSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { spawn, execSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { dbPath, sessionSocketPath } from "../config/paths.ts";
-import { saveConfig, type ClawthConfig } from "../config/store.ts";
+import { saveConfig, loadConfig, type ClawthConfig } from "../config/store.ts";
 import { initializeDatabase } from "../db/connection.ts";
-import { setMeta, setAgentId, getAgentId } from "../db/repository.ts";
+import { setMeta, getMeta, setAgentId, getAgentId } from "../db/repository.ts";
 import { configurePostgREST } from "../db/postgrest.ts";
-import { hashPassphrase } from "../crypto/kdf.ts";
-import { promptSecret, promptInput, promptConfirm } from "../utils/prompt.ts";
+import { hashPassphrase, verifyPassphrase } from "../crypto/kdf.ts";
+import { promptInput } from "../utils/prompt.ts";
 import { sendToDaemon } from "../session/client.ts";
 import { passphraseHashKey, passphraseSaltKey } from "./shared.ts";
+
+// ── Style helpers ──
+
+const BOLD = "\x1b[1m";
+const DIM = "\x1b[2m";
+const GREEN = "\x1b[32m";
+const YELLOW = "\x1b[33m";
+const CYAN = "\x1b[36m";
+const NC = "\x1b[0m";
+
+function getVersion(): string {
+  try {
+    const thisDir = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(thisDir, "..", "..", "package.json"), "utf8"));
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+// ── Types ──
 
 interface SetupOptions {
   passphrase?: string;
@@ -38,38 +59,85 @@ export async function setupCommand(opts: SetupOptions): Promise<void> {
   const isInteractive = process.stdin.isTTY ?? false;
   const hasFlags = !!(opts.passphrase || opts.agent || opts.remote || opts.remoteJwt);
 
-  // If interactive with no flags → guided wizard
   if (isInteractive && !hasFlags) {
     return guidedSetup(opts);
   }
 
-  // Otherwise: scripted setup (flags + env vars)
   return scriptedSetup(opts);
 }
 
 // ── Guided interactive wizard ──────────────────────────────────────────────
 
 async function guidedSetup(opts: SetupOptions): Promise<void> {
-  console.error("");
-  console.error("  Welcome to Clawth");
-  console.error("  API keys for AI agents — encrypted, injected, never exposed.");
-  console.error("");
+  const version = getVersion();
+
+  console.log("");
+  console.log(`  ${BOLD}Clawth${NC} ${DIM}v${version}${NC}`);
+  console.log(`  ${DIM}API keys for AI agents — encrypted, injected, never exposed.${NC}`);
+  console.log("");
+
+  // Detect existing setup
+  const existingConfig = loadConfig();
+  const hasDb = existsSync(dbPath());
+
+  if (hasDb) {
+    // Existing DB found — offer to reuse
+    console.log(`  ${GREEN}●${NC} Existing database found.`);
+
+    const passphraseInput = await promptInput(`  ${CYAN}?${NC} Enter your passphrase ${DIM}(or Enter to generate a new one)${NC}: `);
+
+    if (passphraseInput) {
+      // Verify the passphrase works
+      setAgentId(existingConfig.agent);
+      if (existingConfig.remote && existingConfig.remoteJwt) {
+        configurePostgREST({ baseUrl: existingConfig.remote, jwt: existingConfig.remoteJwt });
+      }
+      await initializeDatabase();
+
+      const storedHash = await getMeta(passphraseHashKey());
+      const storedSalt = await getMeta(passphraseSaltKey());
+
+      if (storedHash && storedSalt && verifyPassphrase(passphraseInput, storedHash, storedSalt)) {
+        console.log(`  ${GREEN}✓${NC} Passphrase verified. Reusing existing credentials.`);
+
+        // Just restart daemon + reinstall skill with current versions
+        saveConfig(existingConfig);
+        if (!opts.noSkill) installClawthSkill(opts.skillDir);
+        installGlobally();
+        await spawnSessionDaemon(passphraseInput);
+
+        const version = getVersion();
+        console.log("");
+        console.log(`  ${GREEN}✓${NC} ${BOLD}Ready!${NC} ${DIM}v${version}${NC}`);
+        console.log(`    Agent: ${existingConfig.agent} ${DIM}(${existingConfig.remote ? "remote" : "local"})${NC}`);
+        console.log("");
+        console.log(`  ${CYAN}clawth creds${NC}                                    ${DIM}# manage credentials${NC}`);
+        console.log(`  ${CYAN}clawth curl https://api.github.com/user${NC}         ${DIM}# make a call${NC}`);
+        console.log("");
+        return;
+      }
+
+      console.log(`  ${YELLOW}!${NC} Passphrase doesn't match. Starting fresh setup.`);
+    } else {
+      console.log(`  ${DIM}  Generating new passphrase — existing credentials will be re-encrypted on next use.${NC}`);
+    }
+  }
 
   // Step 1: Local or remote?
-  const dbChoice = await promptInput("  Database — local or remote? (L/r): ");
+  const dbChoice = await promptInput(`  ${CYAN}?${NC} Database ${DIM}(L)ocal or (r)emote${NC}: `);
   const useRemote = dbChoice.toLowerCase() === "r" || dbChoice.toLowerCase() === "remote";
 
   let remote: string | undefined;
   let remoteJwt: string | undefined;
 
   if (useRemote) {
-    remote = await promptInput("  PostgREST URL: ");
+    remote = await promptInput(`  ${CYAN}?${NC} PostgREST URL: `);
     if (!remote) {
-      console.error("  URL cannot be empty. Falling back to local.");
+      console.log(`    ${DIM}No URL — using local database.${NC}`);
     } else {
-      const jwtInput = await promptInput("  JWT (token or path to file): ");
+      const jwtInput = await promptInput(`  ${CYAN}?${NC} JWT (token or path): `);
       if (!jwtInput) {
-        console.error("  JWT cannot be empty. Falling back to local.");
+        console.log(`    ${DIM}No JWT — using local database.${NC}`);
         remote = undefined;
       } else {
         remoteJwt = resolveJwtValue(jwtInput);
@@ -78,16 +146,24 @@ async function guidedSetup(opts: SetupOptions): Promise<void> {
   }
 
   // Step 2: Agent ID
-  const agentInput = await promptInput("  Agent ID (Enter for 'default'): ");
+  const agentInput = await promptInput(`  ${CYAN}?${NC} Agent ID ${DIM}(default)${NC}: `);
   const agent = agentInput || "default";
 
-  // Step 3: Passphrase — auto-generated, no question
-  const passphrase = generatePassphrase();
-  console.error(`  Passphrase: ${passphrase}`);
-  console.error(`  ${"\x1b[2m"}(save this if you need to start a new session later)${"\x1b[0m"}`);
-  console.error("");
+  // Step 3: Passphrase
+  const customPass = await promptInput(`  ${CYAN}?${NC} Passphrase ${DIM}(Enter to auto-generate)${NC}: `);
+  let passphrase: string;
 
-  // Apply and save
+  if (customPass) {
+    passphrase = customPass;
+    console.log(`  ${GREEN}●${NC} Using your passphrase.`);
+  } else {
+    passphrase = generatePassphrase();
+    console.log("");
+    console.log(`  ${GREEN}●${NC} Passphrase: ${BOLD}${passphrase}${NC}`);
+    console.log(`    ${DIM}Save this if you need to start a new session later.${NC}`);
+  }
+
+  // Apply
   await applySetup({ agent, passphrase, remote, remoteJwt, skillDir: opts.skillDir });
 }
 
@@ -100,14 +176,14 @@ async function scriptedSetup(opts: SetupOptions): Promise<void> {
   const remoteJwt = rawJwt ? resolveJwtValue(rawJwt) : undefined;
 
   if (remote && !remoteJwt) {
-    console.error("  --remote-jwt is required when using --remote.");
+    console.log("--remote-jwt is required when using --remote.");
     process.exit(1);
   }
 
   let passphrase = opts.passphrase ?? process.env.CLAWTH_AGENT_PASSPHRASE ?? "";
   if (!passphrase) {
     passphrase = generatePassphrase();
-    console.error(`  Generated passphrase: ${passphrase}`);
+    console.log(`  ${GREEN}●${NC} Passphrase: ${passphrase}`);
   }
 
   await applySetup({ agent, passphrase, remote, remoteJwt, skillDir: opts.skillDir, noSkill: opts.noSkill });
@@ -127,68 +203,55 @@ interface ApplyOptions {
 async function applySetup(opts: ApplyOptions): Promise<void> {
   const { agent, passphrase, remote, remoteJwt } = opts;
 
-  // Configure runtime
   setAgentId(agent);
   if (remote && remoteJwt) {
     configurePostgREST({ baseUrl: remote, jwt: remoteJwt });
   }
 
-  // Persist config
   const cfg: ClawthConfig = { agent };
   if (remote) cfg.remote = remote;
   if (remoteJwt) cfg.remoteJwt = remoteJwt;
   saveConfig(cfg);
 
-  // Initialize database (creates if missing, opens if exists)
   if (!remote) {
     await initializeDatabase();
   }
 
-  // Register passphrase for this agent
   const { hash, salt } = hashPassphrase(passphrase);
   await setMeta(passphraseHashKey(), hash);
   await setMeta(passphraseSaltKey(), salt);
   await setMeta("version", "1");
 
-  // Install skill
   if (!opts.noSkill) {
     installClawthSkill(opts.skillDir);
   }
 
-  // Start session daemon
-  await spawnSessionDaemon(passphrase);
-
-  // Install globally so `clawth` works directly
+  // Install globally BEFORE starting daemon — so the daemon runs
+  // from the global install path, not a temp bunx directory
   installGlobally();
 
+  await spawnSessionDaemon(passphrase);
+
   // Summary
-  console.error("");
-  console.error("  Ready!");
-  console.error(`  Agent: ${agent} (${remote ? "remote" : "local"})`);
-  console.error("");
-  console.error("  Next steps — add a credential then use it:");
-  console.error("");
-  console.error(`    clawth set github --type bearer --pattern "*.github.com"`);
-  console.error(`    clawth curl https://api.github.com/user`);
-  console.error("");
+  const version = getVersion();
+  console.log("");
+  console.log(`  ${GREEN}✓${NC} ${BOLD}Ready!${NC} ${DIM}v${version}${NC}`);
+  console.log(`    Agent: ${agent} ${DIM}(${remote ? "remote" : "local"})${NC}`);
+  console.log("");
+  console.log(`  Next steps — add credentials and use them:`);
+  console.log("");
+  console.log(`    ${CYAN}clawth creds${NC}                                    ${DIM}# interactive${NC}`);
+  console.log(`    ${CYAN}clawth curl https://api.github.com/user${NC}         ${DIM}# make a call${NC}`);
+  console.log("");
 }
 
 function installGlobally(): void {
-  // Check if clawth is already globally available
+  // Always install/update to latest to avoid version mismatch
   try {
-    execSync("clawth --version", { stdio: "ignore" });
-    return; // Already installed
+    execSync("npm install -g clawth@latest", { stdio: "ignore" });
   } catch {
-    // Not installed — continue
-  }
-
-  try {
-    // Try npm first (most common)
-    execSync("npm install -g clawth", { stdio: "ignore" });
-  } catch {
-    // npm failed (permissions?) — try with bun
     try {
-      execSync("bun add -g clawth", { stdio: "ignore" });
+      execSync("bun add -g clawth@latest", { stdio: "ignore" });
     } catch {
       // Silent fail — user can still use npx clawth
     }
@@ -202,9 +265,7 @@ async function spawnSessionDaemon(passphrase: string): Promise<void> {
 
   if (existsSync(socketPath)) {
     const result = await sendToDaemon("ping");
-    if (result.ok) {
-      return; // Already running
-    }
+    if (result.ok) return;
   }
 
   const thisDir = dirname(fileURLToPath(import.meta.url));

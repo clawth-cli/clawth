@@ -21,14 +21,16 @@ const YELLOW = "\x1b[33m";
 const CYAN = "\x1b[36m";
 const NC = "\x1b[0m";
 
+const MAX_VISIBLE = 10;
+
 export async function credsCommand(): Promise<void> {
   const passphrase = await getPassphrase();
   await verifyStoredPassphrase(passphrase);
 
   while (true) {
-    console.error("");
+    console.log("");
     await showCredentials();
-    console.error("");
+    console.log("");
 
     const choice = await menu([
       "Add a credential",
@@ -58,16 +60,16 @@ export async function credsCommand(): Promise<void> {
 async function showCredentials(): Promise<void> {
   const creds = await listCredentials();
 
-  console.error(`  ${BOLD}Stored Credentials${NC}`);
-  console.error(`  ${"─".repeat(40)}`);
+  console.log(`  ${BOLD}Stored Credentials${NC}`);
+  console.log(`  ${"─".repeat(40)}`);
 
   if (creds.length === 0) {
-    console.error(`  ${DIM}(none)${NC}`);
+    console.log(`  ${DIM}(none)${NC}`);
     return;
   }
 
   for (const cred of creds) {
-    console.error(
+    console.log(
       `  ${GREEN}●${NC} ${BOLD}${cred.service}${NC}  ${DIM}${cred.type}  →  ${cred.patterns.join(", ") || "(no patterns)"}${NC}`,
     );
   }
@@ -76,12 +78,11 @@ async function showCredentials(): Promise<void> {
 // ── Add credential flow ──
 
 async function addCredentialFlow(passphrase: string): Promise<void> {
-  console.error("");
-  console.error(`  ${BOLD}Add a credential${NC}`);
-  console.error(`  Start typing to search providers, or enter a custom name.`);
-  console.error("");
+  console.log("");
+  console.log(`  ${BOLD}Add a credential${NC}`);
+  console.log("");
 
-  const selected = await providerAutocomplete();
+  const selected = await providerSearch();
   if (!selected) return;
 
   let serviceName: string;
@@ -97,10 +98,10 @@ async function addCredentialFlow(passphrase: string): Promise<void> {
   // Check if already exists
   const existing = await getCredentialByService(serviceName);
   if (existing) {
-    console.error(`  ${YELLOW}Credential '${serviceName}' already exists. Updating secret.${NC}`);
+    console.log(`  ${YELLOW}Credential '${serviceName}' already exists. Updating secret.${NC}`);
     const secret = await promptSecret("  API key: ");
     if (!secret) {
-      console.error("  Cancelled.");
+      console.log("  Cancelled.");
       return;
     }
 
@@ -110,7 +111,7 @@ async function addCredentialFlow(passphrase: string): Promise<void> {
     }
 
     await updateCredentialSecret(serviceName, secret, passphrase);
-    console.error(`  ${GREEN}✓${NC} Credential '${serviceName}' updated.`);
+    console.log(`  ${GREEN}✓${NC} Credential '${serviceName}' updated.`);
     await reloadDaemon();
     return;
   }
@@ -123,12 +124,12 @@ async function addCredentialFlow(passphrase: string): Promise<void> {
 
   // API key / bearer / basic flow
   if (preset) {
-    console.error(`  ${DIM}Get your key at: ${preset.keyHint}${NC}`);
+    console.log(`  ${DIM}Get your key at: ${preset.keyHint}${NC}`);
   }
 
   const secret = await promptSecret("  API key: ");
   if (!secret) {
-    console.error("  Cancelled.");
+    console.log("  Cancelled.");
     return;
   }
 
@@ -151,7 +152,7 @@ async function addCredentialFlow(passphrase: string): Promise<void> {
   } else {
     const patterns = await promptInputLine("  URL pattern (e.g., *.example.com): ");
     if (!patterns) {
-      console.error("  Cancelled.");
+      console.log("  Cancelled.");
       return;
     }
 
@@ -167,7 +168,7 @@ async function addCredentialFlow(passphrase: string): Promise<void> {
     });
   }
 
-  console.error(`  ${GREEN}✓${NC} Credential '${serviceName}' stored.`);
+  console.log(`  ${GREEN}✓${NC} Credential '${serviceName}' stored.`);
   await reloadDaemon();
 }
 
@@ -178,17 +179,16 @@ async function addOAuth2Credential(
 ): Promise<void> {
   const oauth = preset.oauth!;
 
-  console.error(`  ${CYAN}This provider uses OAuth2 — browser login required.${NC}`);
-  console.error(`  ${DIM}${preset.keyHint}${NC}`);
-  console.error("");
+  console.log(`  ${CYAN}This provider uses OAuth2 — browser login required.${NC}`);
+  console.log(`  ${DIM}${preset.keyHint}${NC}`);
+  console.log("");
 
   const clientId = await promptInputLine("  OAuth2 Client ID: ");
   if (!clientId) {
-    console.error("  Cancelled.");
+    console.log("  Cancelled.");
     return;
   }
 
-  // Create the credential entry + OAuth metadata
   const credentialId = await createCredential({
     service: serviceName,
     type: "oauth2_pkce",
@@ -211,14 +211,13 @@ async function addOAuth2Credential(
     service: serviceName,
   });
 
-  // Launch browser login
-  console.error("");
+  console.log("");
   try {
     await performPkceLogin(serviceName, passphrase);
-    console.error(`  ${GREEN}✓${NC} OAuth2 login complete for '${serviceName}'.`);
+    console.log(`  ${GREEN}✓${NC} OAuth2 login complete for '${serviceName}'.`);
   } catch (err: any) {
-    console.error(`  ${RED}✗${NC} OAuth2 login failed: ${err.message}`);
-    console.error(`  You can retry later with: clawth login ${serviceName}`);
+    console.log(`  ${RED}✗${NC} OAuth2 login failed: ${err.message}`);
+    console.log(`  You can retry later with: clawth login ${serviceName}`);
   }
 
   await reloadDaemon();
@@ -229,17 +228,17 @@ async function addOAuth2Credential(
 async function removeCredentialFlow(): Promise<void> {
   const creds = await listCredentials();
   if (creds.length === 0) {
-    console.error("  No credentials to remove.");
+    console.log("  No credentials to remove.");
     return;
   }
 
-  console.error("");
+  console.log("");
   const idx = await menu(creds.map((c) => `${c.service} (${c.type})`));
   if (idx < 0 || idx >= creds.length) return;
 
   const service = creds[idx]!.service;
   await deleteCredential(service);
-  console.error(`  ${GREEN}✓${NC} Credential '${service}' deleted.`);
+  console.log(`  ${GREEN}✓${NC} Credential '${service}' deleted.`);
   await reloadDaemon();
 }
 
@@ -248,11 +247,11 @@ async function removeCredentialFlow(): Promise<void> {
 async function updateCredentialFlow(passphrase: string): Promise<void> {
   const creds = await listCredentials();
   if (creds.length === 0) {
-    console.error("  No credentials to update.");
+    console.log("  No credentials to update.");
     return;
   }
 
-  console.error("");
+  console.log("");
   const idx = await menu(creds.map((c) => `${c.service} (${c.type})`));
   if (idx < 0 || idx >= creds.length) return;
 
@@ -260,12 +259,12 @@ async function updateCredentialFlow(passphrase: string): Promise<void> {
   const preset = PROVIDERS.find((p) => p.name === service);
 
   if (preset) {
-    console.error(`  ${DIM}Get your key at: ${preset.keyHint}${NC}`);
+    console.log(`  ${DIM}Get your key at: ${preset.keyHint}${NC}`);
   }
 
   const secret = await promptSecret("  New API key: ");
   if (!secret) {
-    console.error("  Cancelled.");
+    console.log("  Cancelled.");
     return;
   }
 
@@ -275,7 +274,7 @@ async function updateCredentialFlow(passphrase: string): Promise<void> {
   }
 
   await updateCredentialSecret(service, secret, passphrase);
-  console.error(`  ${GREEN}✓${NC} Credential '${service}' updated.`);
+  console.log(`  ${GREEN}✓${NC} Credential '${service}' updated.`);
   await reloadDaemon();
 }
 
@@ -287,7 +286,7 @@ async function validateKey(
 ): Promise<boolean> {
   if (!preset.validateUrl) return true;
 
-  process.stderr.write(`  Validating...`);
+  process.stdout.write(`  Validating...`);
 
   try {
     let url = preset.validateUrl;
@@ -315,21 +314,20 @@ async function validateKey(
 
     const okCodes = preset.validateOk ?? [200];
     if (okCodes.includes(resp.status) || (resp.status >= 200 && resp.status < 300)) {
-      console.error(`\r  ${GREEN}✓ Key is valid${NC}          `);
+      console.log(`\r  ${GREEN}✓ Key is valid${NC}          `);
       return true;
     }
 
     if (resp.status === 401 || resp.status === 403) {
-      console.error(`\r  ${RED}✗ Invalid key (HTTP ${resp.status})${NC}          `);
+      console.log(`\r  ${RED}✗ Invalid key (HTTP ${resp.status})${NC}          `);
       return false;
     }
 
-    // Other status — warn but allow
-    console.error(`\r  ${YELLOW}? Got HTTP ${resp.status} — key might be valid${NC}          `);
+    console.log(`\r  ${YELLOW}? Got HTTP ${resp.status} — key might be valid${NC}          `);
     return true;
   } catch (err: any) {
-    console.error(`\r  ${YELLOW}? Could not validate: ${err.message}${NC}          `);
-    return true; // Network error — don't block
+    console.log(`\r  ${YELLOW}? Could not validate: ${err.message}${NC}          `);
+    return true;
   }
 }
 
@@ -337,9 +335,9 @@ async function validateKey(
 
 async function menu(items: string[]): Promise<number> {
   for (let i = 0; i < items.length; i++) {
-    console.error(`  ${BOLD}${i + 1})${NC} ${items[i]}`);
+    console.log(`  ${BOLD}${i + 1})${NC} ${items[i]}`);
   }
-  console.error("");
+  console.log("");
 
   const answer = await promptInputLine("  Choice: ");
   const idx = parseInt(answer, 10) - 1;
@@ -348,9 +346,10 @@ async function menu(items: string[]): Promise<number> {
 }
 
 function promptInputLine(message: string): Promise<string> {
+  if (process.stdin.isPaused()) process.stdin.resume();
   const rl = readline.createInterface({
     input: process.stdin,
-    output: process.stderr,
+    output: process.stdout,
     terminal: true,
   });
 
@@ -363,90 +362,154 @@ function promptInputLine(message: string): Promise<string> {
 }
 
 /**
- * Autocomplete provider search.
- * User types characters, sees matching providers updating in real-time.
- * Press Enter to select, or type a custom name.
+ * Interactive provider search using readline.
+ * Uses readline's built-in key handling (no raw mode issues).
  */
-async function providerAutocomplete(): Promise<ProviderPreset | string | null> {
-  return new Promise((resolve) => {
-    const stdin = process.stdin;
-    const wasRaw = stdin.isRaw;
+async function providerSearch(): Promise<ProviderPreset | string | null> {
+  const stdin = process.stdin;
 
+  // Ensure stdin is in flowing mode and not paused from previous readline usage
+  if (stdin.isPaused()) stdin.resume();
+
+  return new Promise((resolve) => {
     let query = "";
-    let matches = PROVIDERS.slice(0, 8);
+    let matches = PROVIDERS.slice(0, MAX_VISIBLE);
     let selectedIdx = 0;
+    let totalLines = 0;
+    let finished = false;
+    const out = process.stdout;
 
     function render() {
-      // Clear previous output
-      const clearLines = matches.length + 3;
-      for (let i = 0; i < clearLines; i++) {
-        process.stderr.write("\x1b[2K"); // Clear line
-        if (i < clearLines - 1) process.stderr.write("\x1b[A"); // Move up
+      // Move to start and clear everything we previously drew
+      if (totalLines > 0) {
+        out.write(`\x1b[${totalLines}A`); // move up
       }
-      process.stderr.write("\r");
+      out.write("\r");
 
-      // Input line
-      process.stderr.write(`  ${BOLD}Provider:${NC} ${query}\n`);
+      const lines: string[] = [];
 
-      // Matches
-      const filtered = searchProviders(query).slice(0, 8);
+      lines.push(`  ${CYAN}/${NC} ${query}${DIM}│${NC}\x1b[K`);
+
+      const filtered = searchProviders(query).slice(0, MAX_VISIBLE);
       matches = filtered;
       if (selectedIdx >= matches.length) selectedIdx = Math.max(0, matches.length - 1);
 
-      if (matches.length === 0) {
-        process.stderr.write(`  ${DIM}No matches — Enter to use "${query}" as custom service${NC}\n`);
-        process.stderr.write("\n");
+      if (matches.length === 0 && query) {
+        lines.push(`  ${DIM}No matches — Enter to use "${query}" as custom service${NC}\x1b[K`);
       } else {
         for (let i = 0; i < matches.length; i++) {
           const p = matches[i]!;
-          const prefix = i === selectedIdx ? `${CYAN}❯${NC}` : " ";
-          const name = i === selectedIdx ? `${BOLD}${p.displayName}${NC}` : p.displayName;
-          process.stderr.write(`  ${prefix} ${name}  ${DIM}${p.patterns.join(", ")}${NC}\n`);
+          if (i === selectedIdx) {
+            lines.push(`  ${CYAN}❯${NC} ${BOLD}${p.displayName}${NC}  ${DIM}${p.patterns.join(", ")}${NC}\x1b[K`);
+          } else {
+            lines.push(`    ${p.displayName}  ${DIM}${p.patterns.join(", ")}${NC}\x1b[K`);
+          }
         }
-        process.stderr.write("\n");
       }
+
+      lines.push(`  ${DIM}↑↓ navigate  Enter select  Esc cancel${NC}\x1b[K`);
+
+      // If previous render had more lines, clear the extra ones
+      const prevTotal = totalLines;
+      totalLines = lines.length;
+      for (let i = lines.length; i < prevTotal; i++) {
+        lines.push("\x1b[K"); // clear leftover line
+      }
+
+      out.write(lines.join("\n"));
     }
 
-    // Initial render — write empty lines first so render can clear them
-    for (let i = 0; i < matches.length + 3; i++) {
-      process.stderr.write("\n");
-    }
+    // Reserve space and do initial render
+    out.write("\n".repeat(MAX_VISIBLE + 2));
+    totalLines = MAX_VISIBLE + 2;
     render();
 
+    // Enter raw mode
+    const wasRaw = stdin.isRaw;
     if (stdin.setRawMode) stdin.setRawMode(true);
 
-    const onData = (buf: Buffer) => {
-      const ch = buf.toString("utf8");
+    let escBuf = "";
+    let escTimeout: ReturnType<typeof setTimeout> | null = null;
 
-      if (ch === "\r" || ch === "\n") {
-        // Select
-        cleanup();
+    function finish(result: ProviderPreset | string | null) {
+      if (finished) return;
+      finished = true;
+      if (stdin.setRawMode) stdin.setRawMode(wasRaw ?? false);
+      stdin.removeListener("data", onData);
+      if (escTimeout) clearTimeout(escTimeout);
+      // Clear the search UI
+      if (totalLines > 0) {
+        out.write(`\x1b[${totalLines}A`);
+        out.write("\r");
+        for (let i = 0; i <= totalLines; i++) {
+          out.write("\x1b[2K\n");
+        }
+        out.write(`\x1b[${totalLines + 1}A`);
+        out.write("\r");
+      }
+      if (result && typeof result !== "string") {
+        console.log(`  Selected: ${BOLD}${result.displayName}${NC}`);
+      } else if (result) {
+        console.log(`  Custom service: ${BOLD}${result}${NC}`);
+      }
+      resolve(result);
+    }
+
+    function processKey(key: string) {
+      // Escape
+      if (key === "\x1b" && escBuf === "") {
+        // Could be start of escape sequence or standalone Esc
+        escBuf = "\x1b";
+        escTimeout = setTimeout(() => {
+          escBuf = "";
+          finish(null);
+        }, 50);
+        return;
+      }
+
+      // Escape sequence continuation
+      if (escBuf === "\x1b") {
+        if (escTimeout) clearTimeout(escTimeout);
+        escBuf += key;
+        if (escBuf === "\x1b[") {
+          // Wait for final char
+          return;
+        }
+        // Process complete sequence
+        processEscapeSequence(escBuf);
+        escBuf = "";
+        return;
+      }
+
+      if (escBuf === "\x1b[") {
+        escBuf += key;
+        processEscapeSequence(escBuf);
+        escBuf = "";
+        return;
+      }
+
+      escBuf = "";
+
+      // Enter
+      if (key === "\r" || key === "\n") {
         if (matches.length > 0 && selectedIdx < matches.length) {
-          resolve(matches[selectedIdx]!);
+          finish(matches[selectedIdx]!);
         } else if (query) {
-          resolve(query);
+          finish(query);
         } else {
-          resolve(null);
+          finish(null);
         }
         return;
       }
 
-      if (ch === "\x1b[A") {
-        // Up arrow
-        if (selectedIdx > 0) selectedIdx--;
-        render();
+      // Ctrl+C
+      if (key === "\x03") {
+        finish(null);
         return;
       }
 
-      if (ch === "\x1b[B") {
-        // Down arrow
-        if (selectedIdx < matches.length - 1) selectedIdx++;
-        render();
-        return;
-      }
-
-      if (ch === "\x09") {
-        // Tab — accept current selection into query
+      // Tab — fill query with selected
+      if (key === "\x09") {
         if (matches.length > 0 && selectedIdx < matches.length) {
           query = matches[selectedIdx]!.name;
           selectedIdx = 0;
@@ -455,38 +518,41 @@ async function providerAutocomplete(): Promise<ProviderPreset | string | null> {
         return;
       }
 
-      if (ch === "\x7f" || ch === "\b") {
-        // Backspace
+      // Backspace
+      if (key === "\x7f" || key === "\b") {
         query = query.slice(0, -1);
         selectedIdx = 0;
         render();
         return;
       }
 
-      if (ch === "\x03") {
-        // Ctrl+C
-        cleanup();
-        resolve(null);
-        return;
-      }
-
-      // Regular character
-      if (ch.length === 1 && ch >= " ") {
-        query += ch;
+      // Printable character
+      if (key.length === 1 && key >= " ") {
+        query += key;
         selectedIdx = 0;
         render();
       }
-    };
+    }
 
-    function cleanup() {
-      if (stdin.setRawMode) stdin.setRawMode(wasRaw ?? false);
-      stdin.removeListener("data", onData);
-      // Clear the autocomplete UI
-      for (let i = 0; i < matches.length + 3; i++) {
-        process.stderr.write("\x1b[2K");
-        if (i < matches.length + 2) process.stderr.write("\x1b[A");
+    function processEscapeSequence(seq: string) {
+      if (seq === "\x1b[A") {
+        // Up
+        if (selectedIdx > 0) selectedIdx--;
+        render();
+      } else if (seq === "\x1b[B") {
+        // Down
+        if (selectedIdx < matches.length - 1) selectedIdx++;
+        render();
       }
-      process.stderr.write("\r");
+      // Ignore other sequences
+    }
+
+    function onData(buf: Buffer) {
+      // Process each byte/char separately for escape sequence handling
+      const str = buf.toString("utf8");
+      for (const ch of str) {
+        processKey(ch);
+      }
     }
 
     stdin.on("data", onData);

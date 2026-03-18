@@ -36,7 +36,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectName: "Authorization",
     injectTemplate: "Bearer {token}",
     validateUrl: "https://api.github.com/user",
-    keyHint: "https://github.com/settings/tokens",
+    keyHint: "https://github.com/settings/personal-access-tokens",
   },
   {
     name: "gitlab",
@@ -68,9 +68,8 @@ export const PROVIDERS: ProviderPreset[] = [
     injectMethod: "header",
     injectName: "x-api-key",
     injectTemplate: "{token}",
-    validateUrl: "https://api.anthropic.com/v1/messages",
-    validateOk: [400], // 400 = key valid but missing body; 401 = bad key
-    keyHint: "https://console.anthropic.com/settings/keys",
+    validateUrl: "", // POST-only API — can't validate with GET
+    keyHint: "https://console.anthropic.com/account/keys",
   },
   {
     name: "google-ai",
@@ -92,7 +91,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectName: "xi-api-key",
     injectTemplate: "{token}",
     validateUrl: "https://api.elevenlabs.io/v1/user",
-    keyHint: "https://elevenlabs.io/app/settings/api-keys",
+    keyHint: "https://elevenlabs.io/app/developers → API Keys",
   },
   {
     name: "stripe",
@@ -135,7 +134,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectMethod: "header",
     injectName: "Authorization",
     injectTemplate: "Bearer {token}",
-    validateUrl: "https://api.notion.com/v1/users/me",
+    validateUrl: "", // Requires Notion-Version header — can't validate with simple GET
     keyHint: "https://www.notion.so/my-integrations",
   },
   {
@@ -148,7 +147,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectTemplate: "{token}",
     validateUrl: "https://api.linear.app/graphql",
     validateOk: [400], // GraphQL needs a body; 400 = auth ok, 401 = bad key
-    keyHint: "https://linear.app/settings/api",
+    keyHint: "https://linear.app/<workspace>/settings/api",
   },
   {
     name: "vercel",
@@ -293,7 +292,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectTemplate: "Bearer {token}",
     validateUrl: "https://api.perplexity.ai/chat/completions",
     validateOk: [400, 422],
-    keyHint: "https://www.perplexity.ai/settings/api",
+    keyHint: "https://www.perplexity.ai/account/api/keys",
   },
   {
     name: "cohere",
@@ -326,7 +325,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectName: "Authorization",
     injectTemplate: "Bearer {token}",
     validateUrl: "https://api.fireworks.ai/inference/v1/models",
-    keyHint: "https://fireworks.ai/account/api-keys",
+    keyHint: "https://app.fireworks.ai/settings/users/api-keys",
   },
   {
     name: "stability",
@@ -370,7 +369,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectName: "Authorization",
     injectTemplate: "Bearer {token}",
     validateUrl: "https://api.figma.com/v1/me",
-    keyHint: "https://www.figma.com/developers/api#access-tokens",
+    keyHint: "https://www.figma.com/settings → Security → Personal access tokens",
   },
   {
     name: "jira",
@@ -425,7 +424,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectName: "Authorization",
     injectTemplate: "{token}",
     validateUrl: "https://api.planetscale.com/v1/organizations",
-    keyHint: "https://app.planetscale.com/settings/service-tokens",
+    keyHint: "https://app.planetscale.com/<org>/settings/service-tokens",
   },
   {
     name: "neon",
@@ -548,7 +547,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectTemplate: "{token}",
     validateUrl: "https://api.assemblyai.com/v2/transcript",
     validateOk: [400],
-    keyHint: "https://www.assemblyai.com/app/account",
+    keyHint: "https://www.assemblyai.com/dashboard",
   },
   {
     name: "deepgram",
@@ -570,7 +569,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectName: "Authorization",
     injectTemplate: "Bearer {token}",
     validateUrl: "https://openrouter.ai/api/v1/models",
-    keyHint: "https://openrouter.ai/keys",
+    keyHint: "https://openrouter.ai/settings/keys",
   },
   {
     name: "fly",
@@ -604,7 +603,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectName: "Authorization",
     injectTemplate: "Bearer {token}",
     validateUrl: "https://api.render.com/v1/owners",
-    keyHint: "https://dashboard.render.com/u/settings#api-keys",
+    keyHint: "https://dashboard.render.com/account/api-keys",
   },
   {
     name: "digitalocean",
@@ -648,7 +647,7 @@ export const PROVIDERS: ProviderPreset[] = [
     injectName: "Authorization",
     injectTemplate: "Bearer {token}",
     validateUrl: "https://api.doppler.com/v3/me",
-    keyHint: "https://dashboard.doppler.com → Access → Service Tokens",
+    keyHint: "https://dashboard.doppler.com → Project → Config → Access → Generate",
   },
   {
     name: "lemon-squeezy",

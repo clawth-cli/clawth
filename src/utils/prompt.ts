@@ -38,7 +38,7 @@ export async function promptSecret(message: string): Promise<string> {
         stdin.removeListener("data", onData);
         process.stderr.write("\n");
         rl.close();
-        resolve(input);
+        resolve(input.trim());
       } else if (str === "\u0003") {
         // Ctrl+C
         if (stdin.setRawMode) {
