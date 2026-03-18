@@ -21,7 +21,7 @@
 curl -H "Authorization: Bearer ghp_R3aLt0k3n..." https://api.github.com/user
 ```
 
-> ❌ Agent asks you for the token — now it's in the conversation context
+> ❌ Agent asks you for the token — now it's in the conversation context, logged, and cached
 ```
 Claude: "Please paste your GitHub token so I can make this API call"
 You:    "ghp_R3aLt0k3n..."
@@ -31,6 +31,12 @@ You:    "ghp_R3aLt0k3n..."
 ```bash
 export GITHUB_TOKEN=ghp_R3aLt0k3n...
 ```
+
+This gets worse when you're not working alone:
+
+- **Shared Claude Code sessions** — your teammates can see every token pasted in chat. One person's production API key is now in everyone's conversation history.
+- **Remote servers / CI** — env vars and shell history persist on disk. Anyone with SSH access to the box can harvest every credential.
+- **Using someone else's credentials** — a colleague wants to let you use their API key without showing it to you. There's no way to do that with plain text tokens.
 
 ## With Clawth
 
@@ -44,23 +50,62 @@ clawth curl https://api.github.com/user
 ## Quick Start
 
 ```bash
+npx clawth
+```
+
+Or with bun:
+
+```bash
 bunx clawth
 ```
 
-That's it. The interactive wizard sets up everything — encrypted database, passphrase, session daemon, and Claude Code skill.
+The interactive wizard sets up everything — encrypted database, passphrase, session daemon, and Claude Code skill.
 
 Then add credentials and use them:
 
 ```bash
-bunx clawth set github --type bearer --pattern "*.github.com"
-bunx clawth curl https://api.github.com/user
+npx clawth set github --type bearer --pattern "*.github.com"
+npx clawth curl https://api.github.com/user
 ```
 
-For CI/scripts, pass flags directly:
+## Headless / Remote Server Setup
+
+For CI, Docker, or remote servers where there's no TTY — pass everything as flags:
 
 ```bash
-bunx clawth setup --passphrase "secret" --agent "my-bot"
-bunx clawth set github --type bearer --pattern "*.github.com" --secret "$GITHUB_TOKEN"
+# One-line setup (auto-generates passphrase if omitted)
+npx clawth setup --passphrase "secret" --agent "prod-bot"
+
+# Add credentials non-interactively
+npx clawth set github --type bearer --pattern "*.github.com" --secret "$GITHUB_TOKEN"
+npx clawth set openai --type api_key --header Authorization \
+  --template "Bearer {token}" --pattern "api.openai.com" --secret "$OPENAI_KEY"
+
+# Ready to use
+npx clawth curl https://api.github.com/user
+```
+
+With a remote database (credentials shared across machines):
+
+```bash
+npx clawth setup \
+  --passphrase "$CLAWTH_PASSPHRASE" \
+  --agent "prod-bot" \
+  --remote "https://postgrest.example.com" \
+  --remote-jwt "$POSTGREST_JWT"
+```
+
+Or use environment variables instead of flags — same result, nothing to type:
+
+```bash
+export CLAWTH_AGENT_ID="prod-bot"
+export CLAWTH_AGENT_PASSPHRASE="secret"
+export CLAWTH_REMOTE="https://postgrest.example.com"
+export CLAWTH_REMOTE_JWT="eyJ..."
+
+npx clawth setup
+npx clawth set github --type bearer --pattern "*.github.com" --secret "$GITHUB_TOKEN"
+npx clawth curl https://api.github.com/user
 ```
 
 ## How It Works
@@ -197,6 +242,8 @@ clawth setup \
 ```
 
 All subsequent commands automatically use the remote database. Credentials are still encrypted client-side — the server only stores ciphertext.
+
+To deploy your own compatible backend, see **[Remote Database Setup Guide](REMOTE_DB_SETUP.md)** — includes the full SQL schema, API contract, and a PostgREST quick start.
 
 ## Environment Variables
 
