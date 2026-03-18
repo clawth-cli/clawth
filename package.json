@@ -1,6 +1,6 @@
 {
   "name": "clawth",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "API keys for AI agents — encrypted, injected, never exposed",
   "module": "index.ts",
   "type": "module",
