@@ -1,0 +1,30 @@
+{
+  "name": "clawth",
+  "version": "0.1.0",
+  "description": "CLI tool that lets Claude Code make authenticated API calls without ever seeing credentials",
+  "module": "index.ts",
+  "type": "module",
+  "bin": {
+    "clawth": "./bin/clawth.ts"
+  },
+  "scripts": {
+    "dev": "bun run bin/clawth.ts",
+    "test": "bun test",
+    "build": "bun build bin/clawth.ts --outdir dist --target node"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/picomatch": "^4.0.2",
+    "@types/sql.js": "^1.4.10",
+    "drizzle-kit": "^0.31.10"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "drizzle-orm": "^0.45.1",
+    "picomatch": "^4.0.3",
+    "sql.js": "^1.14.1"
+  }
+}
