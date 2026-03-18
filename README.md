@@ -52,16 +52,20 @@ That's it. Every `clawth curl` to `*.github.com` now uses your token automatical
 ## How It Works
 
 ```
-┌──────────────┐     clawth curl url     ┌──────────┐     curl + auth header     ┌─────────┐
-│  Claude Code │ ──────────────────────> │  Clawth  │ ────────────────────────> │   API   │
-│  (no secret) │ <────────────────────── │  (proxy) │ <──────────────────────── │ Server  │
-└──────────────┘     API response        └──────────┘     API response          └─────────┘
-                                              │
-                                              ▼
-                                     ┌─────────────────┐
-                                     │  Encrypted DB    │
-                                     │  (local / remote)│
-                                     └─────────────────┘
+                clawth curl url              curl + auth header
+  +-----------+  ─────────────>  +--------+  ─────────────────>  +--------+
+  |  Claude   |                  |        |                      |  API   |
+  |   Code    |                  | Clawth |                      | Server |
+  | (no secret)                  | (proxy)|                      |        |
+  +-----------+  <─────────────  +--------+  <─────────────────  +--------+
+                  API response       |        API response
+                                     |
+                                     v
+                              +--------------+
+                              | Encrypted DB |
+                              |  local or    |
+                              |  remote      |
+                              +--------------+
 ```
 
 1. **URL matching** — Clawth matches the request URL against stored glob patterns (`*.github.com`, `api.openai.com`, etc.)

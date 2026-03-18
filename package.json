@@ -1,16 +1,53 @@
 {
   "name": "clawth",
   "version": "0.1.0",
-  "description": "CLI tool that lets Claude Code make authenticated API calls without ever seeing credentials",
+  "description": "API keys for AI agents — encrypted, injected, never exposed",
   "module": "index.ts",
   "type": "module",
   "bin": {
     "clawth": "./bin/clawth.ts"
   },
+  "files": [
+    "bin/",
+    "src/",
+    "skill/",
+    "install.sh",
+    "README.md"
+  ],
   "scripts": {
     "dev": "bun run bin/clawth.ts",
     "test": "bun test",
-    "build": "bun build bin/clawth.ts --outdir dist --target node"
+    "build": "bun build bin/clawth.ts --outdir dist --target node",
+    "prepublishOnly": "bun test"
+  },
+  "keywords": [
+    "cli",
+    "credentials",
+    "api-keys",
+    "authentication",
+    "proxy",
+    "claude",
+    "claude-code",
+    "ai-agent",
+    "encryption",
+    "security",
+    "curl",
+    "oauth2",
+    "jwt",
+    "aws-sigv4"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clawth-cli/clawth.git"
+  },
+  "homepage": "https://github.com/clawth-cli/clawth",
+  "bugs": {
+    "url": "https://github.com/clawth-cli/clawth/issues"
+  },
+  "author": "clawth-cli",
+  "engines": {
+    "bun": ">=1.0.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
