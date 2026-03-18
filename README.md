@@ -14,40 +14,54 @@
 
 ---
 
-## The Problem
+## Without Clawth
 
-You want Claude Code (or any AI agent) to call APIs on your behalf. But those APIs need authentication — and you **don't want your tokens in the chat, in process arguments, or anywhere the agent can read them**.
-
-## The Solution
-
-Clawth is a credential proxy. Your agent runs `clawth curl` instead of `curl`. Clawth looks up the right credential, injects the auth header, and executes the request. The agent never sees the secret.
-
-```
-Agent runs:     clawth curl https://api.github.com/user
-What happens:   curl -H "Authorization: Bearer ghp_****" https://api.github.com/user
-Agent sees:     the API response (never the token)
+> ❌ Token hardcoded in the command — visible in chat history, shell history, and `ps aux`
+```bash
+curl -H "Authorization: Bearer ghp_R3aLt0k3n..." https://api.github.com/user
 ```
 
-Secrets are encrypted at rest with AES-256-GCM. Each agent gets its own passphrase and isolated credential store.
+> ❌ Agent asks you for the token — now it's in the conversation context
+```
+Claude: "Please paste your GitHub token so I can make this API call"
+You:    "ghp_R3aLt0k3n..."
+```
+
+> ❌ Token stored in plain text — anyone with file access can read it
+```bash
+export GITHUB_TOKEN=ghp_R3aLt0k3n...
+```
+
+## With Clawth
+
+> ✅ Agent runs `clawth curl` — the token is encrypted, injected at runtime, and never exposed
+```bash
+clawth curl https://api.github.com/user
+# → Clawth decrypts the credential, pipes auth via stdin to curl
+# → The agent only sees the API response, never the token
+```
 
 ## Quick Start
 
 ```bash
-# Install
-git clone https://github.com/your-org/clawth && cd clawth
-bun install
-
-# Set up (creates encrypted DB, starts session daemon, installs Claude Code skill)
-bun run bin/clawth.ts setup --passphrase "your-passphrase"
-
-# Add a credential
-bun run bin/clawth.ts set github --type bearer --pattern "*.github.com" --secret "ghp_your_token"
-
-# Make an authenticated request
-bun run bin/clawth.ts curl https://api.github.com/user
+bunx clawth
 ```
 
-That's it. Every `clawth curl` to `*.github.com` now uses your token automatically.
+That's it. The interactive wizard sets up everything — encrypted database, passphrase, session daemon, and Claude Code skill.
+
+Then add credentials and use them:
+
+```bash
+bunx clawth set github --type bearer --pattern "*.github.com"
+bunx clawth curl https://api.github.com/user
+```
+
+For CI/scripts, pass flags directly:
+
+```bash
+bunx clawth setup --passphrase "secret" --agent "my-bot"
+bunx clawth set github --type bearer --pattern "*.github.com" --secret "$GITHUB_TOKEN"
+```
 
 ## How It Works
 
